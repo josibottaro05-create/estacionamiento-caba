@@ -2,111 +2,127 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prototipo estacionamiento CABA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estacionamiento CABA</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
   :root {
     --bg: #ffffff; --fg: #1d2330; --muted: #5d6677; --line: #d9dde5; --panel: #ffffffee;
     --ok: #1f9d55; --mid: #e0a100; --bad: #d64545; --none: #9aa1ad; --accent: #2457d6;
+    --safe-t: env(safe-area-inset-top, 0px); --safe-b: env(safe-area-inset-bottom, 0px);
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #151922; --fg: #e8ebf2; --muted: #a2aab9; --line: #2e3544; --panel: #1b2030ee; --accent: #7da2ff; }
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
   #map { position: absolute; inset: 0; }
-  .panel { position: absolute; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); padding: 12px 14px; }
-  #controls { top: 60px; left: 12px; width: min(330px, calc(100% - 24px)); }
-  #controls h1 { font-size: 15px; margin: 0 0 2px; }
-  #controls p { margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.4; }
-  .row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
-  .row label { min-width: 44px; color: var(--muted); }
-  input[type=range] { flex: 1; }
-  select, button { font: inherit; font-size: 13px; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
-  button:hover { border-color: var(--accent); }
-  #legend { bottom: 28px; left: 12px; font-size: 12px; }
-  #legend div { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-  .sw { width: 22px; height: 6px; border-radius: 3px; display: inline-block; }
-  #status { top: 12px; right: 12px; max-width: 250px; font-size: 12px; color: var(--muted); line-height: 1.4; }
-  .maplibregl-popup-content { background: var(--bg); color: var(--fg); border-radius: 10px; font-size: 13px; padding: 12px 14px; }
-  .maplibregl-popup-tip { display: none; }
-  .pop h3 { margin: 0 0 4px; font-size: 14px; }
-  .pop .meta { color: var(--muted); font-size: 12px; margin: 3px 0; }
-  .pop .btns { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; color: #fff; }
-  .me { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--accent), 0 1px 6px #0006; }
-  #tabs { top: 12px; left: 12px; padding: 4px; display: flex; gap: 4px; }
-  #tabs button { border: 0; background: transparent; padding: 7px 14px; font-weight: 600; }
+  [hidden] { display: none !important; }
+
+  .glass { position: absolute; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; backdrop-filter: blur(10px); box-shadow: 0 4px 18px #0003; }
+  button, select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; min-height: 44px; padding: 0 14px; cursor: pointer; }
+  button:active { transform: scale(.98); }
+
+  /* pestañas */
+  #tabs { top: calc(12px + var(--safe-t)); left: 12px; padding: 3px; display: flex; gap: 2px; border-radius: 999px; }
+  #tabs button { border: 0; background: transparent; border-radius: 999px; min-height: 40px; padding: 0 16px; font-weight: 600; font-size: 15px; }
   #tabs button.on { background: var(--accent); color: #fff; }
-  .sheet { left: 12px; right: 12px; bottom: 12px; max-width: 460px; }
-  #relev { z-index: 6; }
-  #relev .small { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin-top: 8px; }
-  #relev .head { display: flex; justify-content: space-between; align-items: baseline; }
-  #rvInfo { font-size: 13px; margin: 6px 0; line-height: 1.4; }
-  .chk { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); margin: 6px 0; }
-  .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-  #rvPrompt { z-index: 8; bottom: 12px; border: 2px solid var(--accent); }
-  #rvPrompt h2 { font-size: 16px; margin: 0 0 2px; }
-  #rvPrompt .sub { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+
+  /* botón de ubicación */
+  #fab { top: calc(60px + var(--safe-t)); right: 12px; width: 48px; height: 48px; border-radius: 50%; padding: 0; display: grid; place-items: center; }
+  #fab svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 2; }
+
+  /* barra inferior */
+  .dock { left: 12px; right: 12px; bottom: calc(12px + var(--safe-b)); max-width: 520px; padding: 12px; max-height: calc(100dvh - 130px - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
+  #timebar { display: flex; align-items: center; gap: 10px; }
+  #timebar select { padding: 0 8px; }
+  #hour { flex: 1; height: 36px; accent-color: var(--accent); min-width: 0; }
+  #hourLabel { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 46px; text-align: right; }
+  #now { min-height: 36px; padding: 0 12px; font-size: 14px; color: var(--accent); }
+
+  /* relevamiento */
+  #rvTop { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  #rvCount { font-weight: 700; font-size: 15px; }
+  #rvMore { width: 44px; padding: 0; font-size: 22px; line-height: 1; }
+  #rvInfo { font-size: 14px; color: var(--muted); margin-bottom: 8px; line-height: 1.35; }
+  #rvInfo:empty { display: none; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { flex: 1; min-height: 54px; font-weight: 700; border-radius: 14px; }
+  .primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #rvMenu { margin-top: 10px; display: grid; gap: 6px; }
+  #rvMenu button { text-align: left; min-height: 44px; }
+  #rvMenu label { display: flex; gap: 10px; align-items: center; min-height: 44px; padding: 0 4px; font-size: 15px; }
+  #rvMenu input { width: 20px; height: 20px; accent-color: var(--accent); }
+  #rvMenu .note { font-size: 12px; color: var(--muted); line-height: 1.35; padding: 2px 4px; }
+
+  /* pregunta de cada cuadra */
+  #rvPrompt { z-index: 8; border: 2px solid var(--accent); }
+  #rvPrompt h2 { font-size: 19px; margin: 0 0 2px; }
+  #rvSub { font-size: 14px; color: var(--muted); margin-bottom: 12px; min-height: 1.2em; }
   .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .grid button { min-height: 56px; font-size: 20px; font-weight: 700; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-  .grid2 button { min-height: 44px; }
-  @media (max-width: 640px) { #status { top: auto; bottom: 28px; right: 12px; } }
+  .grid button { min-height: 62px; font-size: 24px; font-weight: 700; padding: 0; }
+  .grid button.small { font-size: 14px; line-height: 1.15; }
+  #rvSkip { width: 100%; margin-top: 8px; border: 0; background: transparent; color: var(--muted); min-height: 44px; }
+
+  /* aviso breve */
+  #toast { position: absolute; z-index: 9; left: 50%; top: calc(112px + var(--safe-t)); transform: translateX(-50%); background: #1d2330ee; color: #fff; padding: 9px 16px; border-radius: 999px; font-size: 14px; max-width: calc(100% - 32px); text-align: center; }
+
+  /* popup del mapa */
+  .maplibregl-popup-content { background: var(--bg); color: var(--fg); border-radius: 14px; padding: 12px; box-shadow: 0 4px 18px #0004; }
+  .maplibregl-popup-tip { display: none; }
+  .maplibregl-popup-close-button { font-size: 20px; padding: 4px 10px; color: var(--muted); }
+  .pop h3 { margin: 0 24px 10px 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .pop .btns { display: flex; gap: 6px; }
+  .pop .btns button { flex: 1; min-height: 44px; padding: 0 10px; font-size: 14px; }
+
+  .me { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--accent), 0 1px 6px #0006; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
-<div id="controls" class="panel">
-  <h1>Estacionamiento en CABA — prototipo</h1>
-  <p>Las calles son reales (OpenStreetMap). La probabilidad de lugar es una <b>simulación</b>: todavía no hay datos reales de ocupación.</p>
-  <div class="row">
-    <label>Día</label>
-    <select id="day">
-      <option value="auto">Hoy (real)</option>
-      <option value="wd">Día hábil</option>
-      <option value="sat">Sábado</option>
-      <option value="sun">Domingo / feriado</option>
-    </select>
+<div id="tabs" class="glass"><button id="tab-mapa" class="on">Mapa</button><button id="tab-rel">Relevamiento</button></div>
+<button id="fab" class="glass" aria-label="Mi ubicación"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></button>
+<div id="toast" hidden></div>
+
+<div id="timebar" class="glass dock">
+  <select id="day" aria-label="Día">
+    <option value="auto">Hoy</option>
+    <option value="wd">Hábil</option>
+    <option value="sat">Sábado</option>
+    <option value="sun">Domingo</option>
+  </select>
+  <input type="range" id="hour" min="0" max="23" step="1" aria-label="Hora">
+  <span id="hourLabel"></span>
+  <button id="now" hidden>Ahora</button>
+</div>
+
+<div id="relev" class="glass dock" hidden>
+  <div id="rvTop"><span id="rvCount"></span><button id="rvMore" aria-label="Más opciones">⋯</button></div>
+  <div id="rvInfo"></div>
+  <div class="actions">
+    <button id="rvManual" hidden>Terminé la cuadra</button>
+    <button id="rvStart" class="primary">Empezar</button>
   </div>
-  <div class="row">
-    <label>Hora</label>
-    <input type="range" id="hour" min="0" max="23" step="1">
-    <span id="hourLabel" style="min-width:42px;text-align:right"></span>
+  <div id="rvMenu" hidden>
+    <label><input type="checkbox" id="rvCompanion"> Voy a pie o de acompañante</label>
+    <button id="rvUndo">Deshacer la última</button>
+    <button id="rvCsv">Exportar CSV</button>
+    <button id="rvClear">Borrar todo</button>
+    <button id="rvSim">Probar con recorrido simulado</button>
+    <div class="note">Si manejás solo, no uses el teléfono en movimiento: sin la casilla, las preguntas esperan a que frenes.</div>
   </div>
-  <div class="row"><button id="now">Ahora</button><button id="locate">Mi ubicación</button></div>
 </div>
 
-<div id="legend" class="panel">
-  <div><span class="sw" style="background:var(--ok)"></span>Probable que haya lugar</div>
-  <div><span class="sw" style="background:var(--mid)"></span>Difícil</div>
-  <div><span class="sw" style="background:var(--bad)"></span>Muy difícil</div>
-  <div><span class="sw" style="background:var(--none)"></span>No se puede (regla general)</div>
-</div>
-
-<div id="status" class="panel">Iniciando…</div>
-
-<div id="tabs" class="panel"><button id="tab-mapa" class="on">Mapa</button><button id="tab-rel">Relevamiento</button></div>
-
-<div id="relev" class="panel sheet" style="display:none">
-  <div class="head"><b>Relevamiento de lugares</b><span id="rvCount" style="font-size:12px;color:var(--muted)"></span></div>
-  <div id="rvInfo">Tocá “Empezar”. Al llegar al final de cada cuadra te pregunto cuántos lugares libres había.</div>
-  <label class="chk"><input type="checkbox" id="rvCompanion"><span>Voy a pie o de acompañante (permite responder en movimiento)</span></label>
-  <div class="row"><button id="rvStart" class="primary">Empezar</button><button id="rvManual">Terminé la cuadra</button><button id="rvSim">Simular</button></div>
-  <div class="row"><button id="rvUndo">Deshacer última</button><button id="rvCsv">Exportar CSV</button><button id="rvClear">Borrar todo</button></div>
-  <div class="small">Si manejás solo, no toques el teléfono en movimiento (en CABA son 5 puntos de licencia): las preguntas quedan en espera hasta que frenes. Los datos se guardan solo en este teléfono; exportalos con “Exportar CSV”.</div>
-</div>
-
-<div id="rvPrompt" class="panel sheet" style="display:none">
-  <h2 id="rvQ">¿Cuántos lugares libres había?</h2>
-  <div class="sub" id="rvSub"></div>
+<div id="rvPrompt" class="glass dock" hidden>
+  <h2>¿Cuántos lugares libres?</h2>
+  <div id="rvSub"></div>
   <div class="grid">
     <button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
-    <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6+</button><button data-v="np">No se puede</button>
+    <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6+</button><button data-v="np" class="small">No se puede</button>
   </div>
-  <div class="grid2"><button data-v="skip">Omitir</button><button data-v="later">Después</button></div>
+  <button id="rvSkip" data-v="skip">Omitir</button>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -115,13 +131,12 @@
 const FALLBACK_CENTER = [-58.3955, -34.5908];   // Recoleta, si no hay ubicación
 const REPORT_TTL_MS = 15 * 60 * 1000;
 const COLORS = { ok: '#1f9d55', mid: '#e0a100', bad: '#d64545', none: '#9aa1ad' };
-const PARKABLE = ['primary', 'secondary', 'tertiary', 'minor'];   // clases de calle donde se estaciona (sin autopistas, servicios ni peatonales)
-const AVENUES = ['primary', 'secondary'];   // proxy de "avenida": regla 2023 → no se estaciona 7–21 hábiles; fin de semana sí
+const PARKABLE = ['primary', 'secondary', 'tertiary', 'minor'];   // calles donde se estaciona (sin autopistas, servicios ni peatonales)
+const AVENUES = ['primary', 'secondary'];   // proxy de "avenida": regla 2023 → no se estaciona 7–21 hábiles
 const MAX_KNOWN = 40000;
 
 // ================= Mapa base minimalista =================
-// Los chunks son los "vector tiles": MapLibre baja solo los de la zona visible y descarga los lejanos.
-// Fondo, agua, parques, edificios muy tenues, calles en gris y nombres de calles. Sin locales, paradas ni autopistas resaltadas.
+// Solo fondo, agua, parques, edificios tenues, calles en gris y nombres de calles.
 const baseStyle = {
   version: 8,
   glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
@@ -145,22 +160,28 @@ const baseStyle = {
   ]
 };
 
-const map = new maplibregl.Map({ container: 'map', style: baseStyle, center: FALLBACK_CENTER, zoom: 16, attributionControl: { compact: true } });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+const map = new maplibregl.Map({ container: 'map', style: baseStyle, center: FALLBACK_CENTER, zoom: 16, attributionControl: false });
+map.addControl(new maplibregl.AttributionControl({ compact: true }), 'top-right');
+// la atribución queda cerrada (botón "i") para no tapar las pestañas
+function closeAttribution() { const a = document.querySelector('.maplibregl-ctrl-attrib'); if (a) { a.classList.remove('maplibregl-compact-show'); a.removeAttribute('open'); } }
+closeAttribution();
+map.once('load', () => { closeAttribution(); setTimeout(closeAttribution, 800); });
 
 // ================= Estado =================
 const $ = id => document.getElementById(id);
-const known = new Map();   // id de tramo -> { cls }
+const known = new Map();
+const colored = new Set();
 let reports = loadReports();
 let following = false;
 let meMarker = null;
-let locMsg = '';
+let mode = 'mapa';
 
 function loadReports() { try { return JSON.parse(localStorage.getItem('reports') || '{}'); } catch { return {}; } }
 function saveReports() { try { localStorage.setItem('reports', JSON.stringify(reports)); } catch {} }
-function minAgo(ts) { return Math.max(0, Math.round((Date.now() - ts) / 60000)); }
 function fmtHour(h) { return String(h).padStart(2, '0') + ':00'; }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+let toastT = null;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3500); }
 
 // ================= Modelo SIMULADO (hipótesis, no datos reales) =================
 function baseOccupancy(hour, dayType) {
@@ -180,24 +201,18 @@ function currentSim() {
   if (day === 'auto') { const d = new Date().getDay(); day = d === 0 ? 'sun' : d === 6 ? 'sat' : 'wd'; }
   return { hour: +$('hour').value, dayType: day };
 }
-
 function evaluate(id, cls, sim) {
   if (AVENUES.includes(cls)) {
     const allowed = sim.dayType === 'wd' ? (sim.hour >= 21 || sim.hour < 7) : true;
-    if (!allowed) return { kind: 'none', color: COLORS.none, label: 'No se puede', note: 'Avenida: en horario hábil (7–21) no se estaciona (regla general)', p: 0 };
+    if (!allowed) return { color: COLORS.none };
   }
   const occ = Math.min(0.98, Math.max(0.10, baseOccupancy(sim.hour, sim.dayType) + (hash01(id) - 0.5) * 0.5));
   const p = 1 - occ;
   const rep = reports[id];
-  if (rep && Date.now() - rep.ts < REPORT_TTL_MS) {
-    const note = `Aviso de usuario hace ${minAgo(rep.ts)} min`;
-    if (rep.type === 'hay')  return { kind: 'ok',  color: COLORS.ok,  label: 'Hay lugar (aviso reciente)', note, p };
-    if (rep.type === 'sale') return { kind: 'ok',  color: COLORS.ok,  label: 'Se está yendo un auto', note, p };
-    if (rep.type === 'no')   return { kind: 'bad', color: COLORS.bad, label: 'Sin lugar (aviso reciente)', note, p };
-  }
-  if (p >= 0.25) return { kind: 'ok',  color: COLORS.ok,  label: 'Probable que haya lugar', note: '', p };
-  if (p >= 0.10) return { kind: 'mid', color: COLORS.mid, label: 'Difícil', note: '', p };
-  return { kind: 'bad', color: COLORS.bad, label: 'Muy difícil', note: '', p };
+  if (rep && Date.now() - rep.ts < REPORT_TTL_MS) return { color: rep.type === 'no' ? COLORS.bad : COLORS.ok };
+  if (p >= 0.25) return { color: COLORS.ok };
+  if (p >= 0.10) return { color: COLORS.mid };
+  return { color: COLORS.bad };
 }
 
 // ================= Pintado de las calles (por tramo, con feature-state) =================
@@ -208,34 +223,30 @@ function scheduleColorize(force) {
   pending = true;
   setTimeout(() => { pending = false; colorize(); }, 60);
 }
-
 function colorize() {
   if (!map.getLayer('calles-color')) return;
   const sim = currentSim();
   $('hourLabel').textContent = fmtHour(sim.hour);
-  if (known.size > MAX_KNOWN) { map.removeFeatureState({ source: 'omt', sourceLayer: 'transportation' }); known.clear(); forceAll = true; }
+  $('now').hidden = $('day').value === 'auto' && sim.hour === new Date().getHours();
+  if (known.size > MAX_KNOWN) { map.removeFeatureState({ source: 'omt', sourceLayer: 'transportation' }); known.clear(); colored.clear(); forceAll = true; }
 
-  // tramos de todos los chunks (tiles) cargados, incluidos los que están apenas fuera de pantalla
   const fs = map.querySourceFeatures('omt', { sourceLayer: 'transportation', filter: ['in', ['get', 'class'], ['literal', PARKABLE]] });
   for (const f of fs) {
     if (f.id === undefined) continue;
-    if (!forceAll && known.has(f.id)) continue;
-    known.set(f.id, { cls: f.properties.class });
+    if (!known.has(f.id)) known.set(f.id, { cls: f.properties.class });
   }
   if (forceAll) {
     for (const [id, v] of known) map.setFeatureState({ source: 'omt', sourceLayer: 'transportation', id }, { color: evaluate(id, v.cls, sim).color });
+    colored.clear(); for (const id of known.keys()) colored.add(id);
   } else {
     for (const f of fs) {
       if (f.id === undefined || colored.has(f.id)) continue;
       map.setFeatureState({ source: 'omt', sourceLayer: 'transportation', id: f.id }, { color: evaluate(f.id, f.properties.class, sim).color });
+      colored.add(f.id);
     }
   }
-  if (forceAll) { colored.clear(); for (const id of known.keys()) colored.add(id); }
-  else for (const f of fs) if (f.id !== undefined) colored.add(f.id);
   forceAll = false;
-  $('status').innerHTML = `<b>${known.size}</b> tramos de calle en memoria (se cargan y descargan según dónde mires)` + (locMsg ? `<br>${locMsg}` : '');
 }
-const colored = new Set();
 
 map.on('load', () => {
   map.addLayer({
@@ -249,6 +260,7 @@ map.on('load', () => {
   map.on('mouseenter', 'calles-color', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'calles-color', () => map.getCanvas().style.cursor = '');
   initReleveLayers();
+  setMode(mode);
   scheduleColorize(true);
   locate(true);
 });
@@ -257,18 +269,17 @@ map.on('moveend', () => scheduleColorize());
 map.on('idle', () => scheduleColorize());
 map.on('dragstart', () => { following = false; });
 
-// ================= Popup y avisos =================
+// ================= Popup del mapa =================
 function streetNameNear(point, cls, id) {
   const nf = map.querySourceFeatures('omt', { sourceLayer: 'transportation_name', filter: ['has', 'name'] });
   const byId = nf.find(f => f.id === id);
   if (byId) return byId.properties.name;
-  let best = null, bestD = 14;   // píxeles
+  let best = null, bestD = 14;
   for (const f of nf) {
     if (f.properties.class !== cls) continue;
     const lines = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
     for (const line of lines) for (let i = 0; i < line.length - 1; i++) {
-      const a = map.project(line[i]), b = map.project(line[i + 1]);
-      const d = distToSeg(point, a, b);
+      const d = distToSeg(point, map.project(line[i]), map.project(line[i + 1]));
       if (d < bestD) { bestD = d; best = f.properties.name; }
     }
   }
@@ -280,26 +291,17 @@ function distToSeg(p, a, b) {
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
-
 let popup = null;
 function onClickStreet(e) {
+  if (mode !== 'mapa') return;
   const f = e.features[0];
   const id = f.id, cls = f.properties.class;
-  const ev = evaluate(id, cls, currentSim());
-  const name = streetNameNear(e.point, cls, id) || 'Calle sin nombre en el mapa';
-  const html = `<div class="pop">
-    <h3>${escapeHtml(name)}</h3>
-    <span class="tag" style="background:${ev.color}">${ev.label}</span>
-    ${ev.kind !== 'none' ? `<div class="meta">Chance estimada de lugar: ~${Math.round(ev.p * 100)}% (simulación)</div>` : ''}
-    ${ev.note ? `<div class="meta">${escapeHtml(ev.note)}</div>` : ''}
-    <div class="meta">Respetá siempre la señalización de la cuadra.</div>
-    <div class="btns">
-      <button onclick="sendReport(${id},'hay')">Hay lugar</button>
-      <button onclick="sendReport(${id},'sale')">Me voy</button>
-      <button onclick="sendReport(${id},'no')">No hay</button>
-    </div></div>`;
+  const color = evaluate(id, cls, currentSim()).color;
+  const name = streetNameNear(e.point, cls, id) || 'Calle';
+  const html = `<div class="pop"><h3><span class="dot" style="background:${color}"></span>${escapeHtml(name)}</h3>
+    <div class="btns"><button onclick="sendReport(${id},'hay')">Hay lugar</button><button onclick="sendReport(${id},'sale')">Me voy</button><button onclick="sendReport(${id},'no')">No hay</button></div></div>`;
   if (popup) popup.remove();
-  popup = new maplibregl.Popup({ maxWidth: '280px' }).setLngLat(e.lngLat).setHTML(html).addTo(map);
+  popup = new maplibregl.Popup({ maxWidth: '300px', offset: 8 }).setLngLat(e.lngLat).setHTML(html).addTo(map);
 }
 function sendReport(id, type) {
   reports[id] = { type, ts: Date.now() };
@@ -312,14 +314,12 @@ function sendReport(id, type) {
 // ================= Ubicación =================
 let watchId = null;
 function locate(first) {
-  if (!navigator.geolocation) { locMsg = 'Este navegador no tiene geolocalización. Mostrando Recoleta.'; scheduleColorize(); return; }
-  locMsg = 'Pidiendo permiso de ubicación…'; scheduleColorize();
+  if (!navigator.geolocation) { if (!first) toast('Este navegador no tiene ubicación'); return; }
   navigator.geolocation.getCurrentPosition(pos => {
     onFix(pos, true);
     if (watchId === null) watchId = navigator.geolocation.watchPosition(p => onFix(p, false), null, { enableHighAccuracy: true, maximumAge: 5000 });
   }, err => {
-    locMsg = first ? 'No se pudo usar tu ubicación. Mostrando Recoleta; podés mover el mapa o tocar "Mi ubicación".' : 'No se pudo obtener tu ubicación (' + err.message + ').';
-    scheduleColorize();
+    toast(err.code === 1 ? 'Activá el permiso de ubicación para verte en el mapa' : 'No se pudo obtener tu ubicación');
   }, { enableHighAccuracy: true, timeout: 12000 });
 }
 function onFix(pos, jump) {
@@ -327,19 +327,17 @@ function onFix(pos, jump) {
   if (!meMarker) { const el = document.createElement('div'); el.className = 'me'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(ll).addTo(map); }
   else meMarker.setLngLat(ll);
   if (SV.active && !SV.sim) surveyFix(pos.coords);
-  locMsg = 'Ubicación activa: el mapa te sigue hasta que lo muevas.';
   if (jump) { following = true; map.jumpTo({ center: ll, zoom: 16.5 }); }
   else if (following) map.easeTo({ center: ll, duration: 800 });
-  scheduleColorize();
 }
 
-// ================= Relevamiento (pestaña) =================
-// Idea: caminando o de acompañante, el GPS detecta cuándo pasás por una esquina; al llegar a la siguiente,
-// la app pregunta cuántos lugares libres había en esa cuadra. Una "esquina" es un punto donde se cruzan dos calles.
+// ================= Relevamiento =================
+// Caminando o de acompañante, el GPS detecta cuándo pasás por una esquina; al llegar a la siguiente
+// pregunta cuántos lugares libres había en esa cuadra. Una "esquina" es un punto donde se cruzan dos calles.
 const SV = { active: false, graph: null, last: null, speed: 0, path: 0, lastI: null, queue: [], prompt: null, asked: new Map(), sim: null, simT: 0, wake: null, acc: null };
 let obs = loadObs();
 function loadObs() { try { return JSON.parse(localStorage.getItem('obs') || '[]'); } catch { return []; } }
-function saveObs() { try { localStorage.setItem('obs', JSON.stringify(obs)); } catch { alert('No se pudo guardar en el teléfono. Exportá el CSV y borrá datos viejos.'); } }
+function saveObs() { try { localStorage.setItem('obs', JSON.stringify(obs)); } catch { toast('No se pudo guardar: exportá el CSV y liberá espacio'); } }
 
 const toRad = Math.PI / 180;
 function mdist(a, b) { const dx = (b[0] - a[0]) * Math.cos((a[1] + b[1]) / 2 * toRad) * 111320, dy = (b[1] - a[1]) * 110540; return Math.hypot(dx, dy); }
@@ -357,7 +355,6 @@ function polyLen(c) { let s = 0; for (let i = 0; i < c.length - 1; i++) s += mdi
 const vkey = c => Math.round(c[0] * 1e5) + ',' + Math.round(c[1] * 1e5);
 function linesOf(g) { return g.type === 'MultiLineString' ? g.coordinates : g.type === 'LineString' ? [g.coordinates] : []; }
 
-// Calles y esquinas alrededor de una posición (a partir de los chunks ya cargados)
 function buildGraph(center) {
   const fs = map.querySourceFeatures('omt', { sourceLayer: 'transportation',
     filter: ['all', ['in', ['get', 'class'], ['literal', PARKABLE]], ['!=', ['get', 'brunnel'], 'tunnel']] });
@@ -385,7 +382,6 @@ function ensureGraph(p) {
   if (!SV.graph || mdist(SV.graph.center, p) > 150 || Date.now() - SV.graph.t > 15000) SV.graph = buildGraph(p);
   return SV.graph;
 }
-
 function nameAt(pt, maxM, preferFid) {
   const nf = map.querySourceFeatures('omt', { sourceLayer: 'transportation_name', filter: ['has', 'name'] });
   let best = null, bd = maxM;
@@ -395,12 +391,12 @@ function nameAt(pt, maxM, preferFid) {
   }
   return best;
 }
-function crossName(I, fid) {   // calle que cruza en la esquina I (distinta de la que recorremos)
+function crossName(I, fid) {
   for (const other of I.fids) {
     if (other === fid) continue;
     for (const L of SV.graph.lines) {
       if (L.fid !== other || !L.c.some(v => vkey(v) === I.key)) continue;
-      let q = L.c.find(v => { const d = mdist(v, I.pt); return d >= 15 && d <= 80; }) || L.c[0];
+      const q = L.c.find(v => { const d = mdist(v, I.pt); return d >= 15 && d <= 80; }) || L.c[0];
       const n = nameAt(q, 8, other);
       if (n) return n;
     }
@@ -408,10 +404,9 @@ function crossName(I, fid) {   // calle que cruza en la esquina I (distinta de l
   return null;
 }
 
-// ---- Detección de esquinas con el GPS ----
 function surveyFix(c) {
   const p = [c.longitude, c.latitude], now = c.ts || Date.now();
-  if (c.accuracy && c.accuracy > 45) { SV.acc = 'Señal GPS débil (' + Math.round(c.accuracy) + ' m): esperá a tener mejor señal'; renderInfo(); return; }
+  if (c.accuracy && c.accuracy > 45) { SV.acc = 'Señal GPS débil, esperá un momento'; renderInfo(); return; }
   SV.acc = null;
   if (SV.last) {
     const d = mdist(SV.last.p, p), dt = (now - SV.last.t) / 1000;
@@ -433,43 +428,39 @@ function tryClose(A, B) {
   const common = [...A.fids].filter(f => B.fids.has(f));
   const straight = mdist(A.pt, B.pt);
   if (!common.length || straight < 30 || straight > 350) return;
-  if (SV.path > straight * 1.7 + 50) return;   // no fue por la misma calle
+  if (SV.path > straight * 1.7 + 50) return;
   enqueue(A, B, common[0]);
 }
 function enqueue(A, B, fid, manual) {
   const key = [A.key, B.key].sort().join('|');
   const prev = SV.asked.get(key);
-  if (!manual && prev && Date.now() - prev < 30 * 60 * 1000) return;   // ya la preguntamos hace poco
+  if (!manual && prev && Date.now() - prev < 30 * 60 * 1000) return;
   SV.asked.set(key, Date.now());
   const mid = [(A.pt[0] + B.pt[0]) / 2, (A.pt[1] + B.pt[1]) / 2];
   let street = null, from = null, to = null;
   try { street = nameAt(mid, 15, fid); if (!manual) { from = crossName(A, fid); to = crossName(B, fid); } } catch {}
-  SV.queue.push({ key, A, B, fid, street: street || 'Calle sin nombre', from, to, len: mdist(A.pt, B.pt), manual: !!manual, acc: SV.last ? 0 : 0 });
+  SV.queue.push({ key, A, B, fid, street: street || 'Calle sin nombre', from, to, len: mdist(A.pt, B.pt), manual: !!manual });
   pumpPrompts();
 }
 
 // ---- Preguntas ----
 function isMoving() { return !$('rvCompanion').checked && SV.speed > 4; }   // > ~14 km/h
 function pumpPrompts() {
-  if (SV.prompt) return;
-  if (!SV.queue.length) return;
-  if (isMoving()) return;   // quedan en espera hasta que frenes
+  if (SV.prompt || !SV.queue.length || isMoving()) return;
   SV.prompt = SV.queue.shift();
   const P = SV.prompt;
-  $('rvQ').textContent = '¿Cuántos lugares libres había?';
-  $('rvSub').textContent = P.street + (P.from && P.to ? ` · entre ${P.from} y ${P.to}` : P.from || P.to ? ` · desde ${P.from || P.to}` : '') + (P.len ? ` (~${Math.round(P.len)} m)` : '');
-  $('rvPrompt').style.display = '';
-  $('relev').style.display = 'none';
+  $('rvSub').textContent = P.street + (P.from && P.to ? ` · entre ${P.from} y ${P.to}` : P.from || P.to ? ` · desde ${P.from || P.to}` : '');
+  $('rvPrompt').hidden = false;
+  $('relev').hidden = true;
   renderInfo();
 }
 function answer(v) {
   const P = SV.prompt;
   if (!P) return;
   SV.prompt = null;
-  $('rvPrompt').style.display = 'none';
-  $('relev').style.display = mode === 'rel' ? '' : 'none';
-  if (v === 'later') { SV.queue.push(P); }
-  else if (v !== 'skip') {
+  $('rvPrompt').hidden = true;
+  $('relev').hidden = mode !== 'rel';
+  if (v !== 'skip') {
     const d = new Date();
     obs.push({ ts: d.toISOString(), dia: ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'][d.getDay()], hora: d.getHours(),
       calle: P.street, entre_a: P.from || '', entre_b: P.to || '',
@@ -477,22 +468,23 @@ function answer(v) {
       desde_lng: P.A.pt[0], desde_lat: P.A.pt[1], hasta_lng: P.B.pt[0], hasta_lat: P.B.pt[1], largo_m: Math.round(P.len), manual: P.manual ? 1 : 0, modo: $('rvCompanion').checked ? 'pie_o_acompanante' : 'auto' });
     saveObs();
   }
-  renderReleve(); renderInfo();
+  renderReleve();
   setTimeout(pumpPrompts, 150);
 }
 document.querySelectorAll('#rvPrompt button').forEach(b => b.addEventListener('click', () => answer(b.dataset.v)));
 
-function todayCount() { const t = new Date().toISOString().slice(0, 10); return obs.filter(o => o.ts.slice(0, 10) === t).length; }
 function renderInfo() {
-  $('rvCount').textContent = `${obs.length} cuadras guardadas (${todayCount()} hoy)`;
-  let t;
-  if (!SV.active) t = 'Tocá “Empezar”. Al llegar al final de cada cuadra te pregunto cuántos lugares libres había.';
-  else if (SV.acc) t = SV.acc;
-  else {
-    t = SV.lastI ? 'Recorriendo… te pregunto en la próxima esquina.' : 'Caminá hasta la primera esquina para empezar a contar cuadras.';
-    if (SV.queue.length) t += ` ${SV.queue.length} cuadra(s) en espera${isMoving() ? ': respondé cuando frenes' : ''}.`;
+  $('rvCount').textContent = obs.length === 1 ? '1 cuadra' : obs.length + ' cuadras';
+  let t = '';
+  if (SV.active) {
+    if (SV.acc) t = SV.acc;
+    else if (SV.queue.length && isMoving()) t = `${SV.queue.length} en espera: respondé cuando frenes`;
+    else if (!SV.lastI) t = 'Caminá hasta la primera esquina';
   }
   $('rvInfo').textContent = t;
+  $('rvStart').textContent = SV.active ? 'Detener' : 'Empezar';
+  $('rvStart').classList.toggle('primary', !SV.active);
+  $('rvManual').hidden = !SV.active;
 }
 function renderReleve() {
   renderInfo();
@@ -509,28 +501,26 @@ function initReleveLayers() {
   renderReleve();
 }
 
-// ---- Pestañas, inicio/fin ----
-let mode = 'mapa';
 function setMode(m) {
   mode = m;
   $('tab-mapa').classList.toggle('on', m === 'mapa'); $('tab-rel').classList.toggle('on', m === 'rel');
-  $('controls').style.display = $('legend').style.display = m === 'mapa' ? '' : 'none';
-  $('relev').style.display = (m === 'rel' && !SV.prompt) ? '' : 'none';
+  $('timebar').hidden = m !== 'mapa';
+  $('relev').hidden = !(m === 'rel' && !SV.prompt);
+  if (m !== 'rel') $('rvMenu').hidden = true;
+  if (popup) popup.remove();
   if (map.getLayer('calles-color')) map.setLayoutProperty('calles-color', 'visibility', m === 'mapa' ? 'visible' : 'none');
   if (map.getLayer('releve-lines')) map.setLayoutProperty('releve-lines', 'visibility', m === 'rel' ? 'visible' : 'none');
   renderInfo();
 }
 async function startSurvey() {
   SV.active = true; SV.lastI = null; SV.path = 0; SV.speed = 0; SV.last = null; SV.queue = [];
-  $('rvStart').textContent = 'Detener';
-  try { SV.wake = await navigator.wakeLock.request('screen'); } catch {}   // pantalla encendida
+  try { SV.wake = await navigator.wakeLock.request('screen'); } catch {}
   following = true;
   if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(false);
   renderInfo();
 }
 function stopSurvey() {
-  SV.active = false; $('rvStart').textContent = 'Empezar';
-  stopSim();
+  SV.active = false; stopSim();
   try { SV.wake && SV.wake.release(); } catch {} SV.wake = null;
   renderInfo();
 }
@@ -544,20 +534,21 @@ function densify(c, step) {
   return out;
 }
 function stopSim() { if (SV.sim) { clearInterval(SV.sim); SV.sim = null; } }
-function startSim() {   // recorrido falso por la calle más larga cercana, para probar sin salir a la calle
+function startSim() {   // recorrido falso, para probar sin salir a la calle
   stopSim();
   const c = map.getCenter(), cp = [c.lng, c.lat];
   const g = buildGraph(cp);
   const L = g.lines.filter(l => distToPolyline(cp, l.c) < 200).sort((a, b) => polyLen(b.c) - polyLen(a.c))[0];
-  if (!L) { alert('No hay calles cargadas cerca del centro del mapa. Esperá un momento y probá de nuevo.'); return; }
+  if (!L) { toast('Todavía no cargaron las calles, probá de nuevo'); return; }
   $('rvCompanion').checked = true;
+  $('rvMenu').hidden = true;
   if (!SV.active) startSurvey();
   SV.graph = null; SV.lastI = null; SV.last = null;
   const pts = densify(L.c, 6); let i = 0; SV.simT = Date.now();
   if (!meMarker) { const el = document.createElement('div'); el.className = 'me'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(pts[0]).addTo(map); }
   SV.sim = setInterval(() => {
-    if (SV.prompt || SV.queue.length) return;   // espera a que contestes
-    if (i >= pts.length) { stopSim(); SV.acc = null; $('rvInfo').textContent = 'Fin del recorrido simulado.'; return; }
+    if (SV.prompt || SV.queue.length) return;
+    if (i >= pts.length) { stopSim(); toast('Fin del recorrido simulado'); return; }
     const p = pts[i++]; SV.simT += 4300;
     meMarker.setLngLat(p); map.jumpTo({ center: p, zoom: 17 });
     surveyFix({ longitude: p[0], latitude: p[1], accuracy: 5, speed: 1.4, ts: SV.simT });
@@ -568,9 +559,13 @@ function toCsv() {
   const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   return '﻿' + [cols.join(','), ...obs.map(o => cols.map(c => esc(o[c])).join(','))].join('\r\n');
 }
+
+// ================= Botones =================
 $('tab-mapa').addEventListener('click', () => setMode('mapa'));
 $('tab-rel').addEventListener('click', () => setMode('rel'));
+$('fab').addEventListener('click', () => { following = true; if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(false); });
 $('rvStart').addEventListener('click', () => SV.active ? stopSurvey() : startSurvey());
+$('rvMore').addEventListener('click', () => { $('rvMenu').hidden = !$('rvMenu').hidden; });
 $('rvSim').addEventListener('click', startSim);
 $('rvManual').addEventListener('click', () => {
   const p = SV.last ? SV.last.p : (meMarker ? meMarker.getLngLat().toArray() : map.getCenter().toArray());
@@ -581,24 +576,20 @@ $('rvManual').addEventListener('click', () => {
 $('rvUndo').addEventListener('click', () => { if (obs.length && confirm('¿Borrar la última cuadra cargada?')) { obs.pop(); saveObs(); renderReleve(); } });
 $('rvClear').addEventListener('click', () => { if (obs.length && confirm('¿Borrar TODOS los datos de este teléfono? Exportá el CSV antes.')) { obs = []; saveObs(); renderReleve(); } });
 $('rvCsv').addEventListener('click', () => {
-  if (!obs.length) { alert('Todavía no hay datos.'); return; }
+  if (!obs.length) { toast('Todavía no hay datos'); return; }
   const blob = new Blob([toCsv()], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'relevamiento-estacionamiento-' + new Date().toISOString().slice(0, 10) + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
 });
 $('rvCompanion').addEventListener('change', pumpPrompts);
-setInterval(() => { if (SV.active) pumpPrompts(); }, 2000);
-renderInfo();
-
-// ================= Controles =================
-function setNow() { $('day').value = 'auto'; $('hour').value = new Date().getHours(); scheduleColorize(true); }
 $('hour').addEventListener('input', () => scheduleColorize(true));
 $('day').addEventListener('change', () => scheduleColorize(true));
-$('now').addEventListener('click', setNow);
-$('locate').addEventListener('click', () => { following = true; if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 16.5 }); else locate(false); });
-setNow();
-setInterval(() => scheduleColorize(true), 60 * 1000); // vencen los avisos
+$('now').addEventListener('click', () => { $('day').value = 'auto'; $('hour').value = new Date().getHours(); scheduleColorize(true); });
+$('hour').value = new Date().getHours();
+$('hourLabel').textContent = fmtHour(+$('hour').value);
+setInterval(() => { if (SV.active) pumpPrompts(); scheduleColorize(true); }, 60 * 1000);
+renderInfo();
 </script>
 </body>
 </html>
