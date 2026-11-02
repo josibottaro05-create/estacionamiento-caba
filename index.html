@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototipo estacionamiento CABA</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d2330; --muted: #5d6677; --line: #d9dde5; --panel: #ffffffee;
+    --ok: #1f9d55; --mid: #e0a100; --bad: #d64545; --none: #9aa1ad; --accent: #2457d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151922; --fg: #e8ebf2; --muted: #a2aab9; --line: #2e3544; --panel: #1b2030ee; --accent: #7da2ff; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+  #map { position: absolute; inset: 0; }
+  .panel { position: absolute; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); padding: 12px 14px; }
+  #controls { top: 60px; left: 12px; width: min(330px, calc(100% - 24px)); }
+  #controls h1 { font-size: 15px; margin: 0 0 2px; }
+  #controls p { margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
+  .row label { min-width: 44px; color: var(--muted); }
+  input[type=range] { flex: 1; }
+  select, button { font: inherit; font-size: 13px; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  #legend { bottom: 28px; left: 12px; font-size: 12px; }
+  #legend div { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .sw { width: 22px; height: 6px; border-radius: 3px; display: inline-block; }
+  #status { top: 12px; right: 12px; max-width: 250px; font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .maplibregl-popup-content { background: var(--bg); color: var(--fg); border-radius: 10px; font-size: 13px; padding: 12px 14px; }
+  .maplibregl-popup-tip { display: none; }
+  .pop h3 { margin: 0 0 4px; font-size: 14px; }
+  .pop .meta { color: var(--muted); font-size: 12px; margin: 3px 0; }
+  .pop .btns { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; color: #fff; }
+  .me { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--accent), 0 1px 6px #0006; }
+  #tabs { top: 12px; left: 12px; padding: 4px; display: flex; gap: 4px; }
+  #tabs button { border: 0; background: transparent; padding: 7px 14px; font-weight: 600; }
+  #tabs button.on { background: var(--accent); color: #fff; }
+  .sheet { left: 12px; right: 12px; bottom: 12px; max-width: 460px; }
+  #relev { z-index: 6; }
+  #relev .small { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin-top: 8px; }
+  #relev .head { display: flex; justify-content: space-between; align-items: baseline; }
+  #rvInfo { font-size: 13px; margin: 6px 0; line-height: 1.4; }
+  .chk { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); margin: 6px 0; }
+  .primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  #rvPrompt { z-index: 8; bottom: 12px; border: 2px solid var(--accent); }
+  #rvPrompt h2 { font-size: 16px; margin: 0 0 2px; }
+  #rvPrompt .sub { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .grid button { min-height: 56px; font-size: 20px; font-weight: 700; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .grid2 button { min-height: 44px; }
+  @media (max-width: 640px) { #status { top: auto; bottom: 28px; right: 12px; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="controls" class="panel">
+  <h1>Estacionamiento en CABA — prototipo</h1>
+  <p>Las calles son reales (OpenStreetMap). La probabilidad de lugar es una <b>simulación</b>: todavía no hay datos reales de ocupación.</p>
+  <div class="row">
+    <label>Día</label>
+    <select id="day">
+      <option value="auto">Hoy (real)</option>
+      <option value="wd">Día hábil</option>
+      <option value="sat">Sábado</option>
+      <option value="sun">Domingo / feriado</option>
+    </select>
+  </div>
+  <div class="row">
+    <label>Hora</label>
+    <input type="range" id="hour" min="0" max="23" step="1">
+    <span id="hourLabel" style="min-width:42px;text-align:right"></span>
+  </div>
+  <div class="row"><button id="now">Ahora</button><button id="locate">Mi ubicación</button></div>
+</div>
+
+<div id="legend" class="panel">
+  <div><span class="sw" style="background:var(--ok)"></span>Probable que haya lugar</div>
+  <div><span class="sw" style="background:var(--mid)"></span>Difícil</div>
+  <div><span class="sw" style="background:var(--bad)"></span>Muy difícil</div>
+  <div><span class="sw" style="background:var(--none)"></span>No se puede (regla general)</div>
+</div>
+
+<div id="status" class="panel">Iniciando…</div>
+
+<div id="tabs" class="panel"><button id="tab-mapa" class="on">Mapa</button><button id="tab-rel">Relevamiento</button></div>
+
+<div id="relev" class="panel sheet" style="display:none">
+  <div class="head"><b>Relevamiento de lugares</b><span id="rvCount" style="font-size:12px;color:var(--muted)"></span></div>
+  <div id="rvInfo">Tocá “Empezar”. Al llegar al final de cada cuadra te pregunto cuántos lugares libres había.</div>
+  <label class="chk"><input type="checkbox" id="rvCompanion"><span>Voy a pie o de acompañante (permite responder en movimiento)</span></label>
+  <div class="row"><button id="rvStart" class="primary">Empezar</button><button id="rvManual">Terminé la cuadra</button><button id="rvSim">Simular</button></div>
+  <div class="row"><button id="rvUndo">Deshacer última</button><button id="rvCsv">Exportar CSV</button><button id="rvClear">Borrar todo</button></div>
+  <div class="small">Si manejás solo, no toques el teléfono en movimiento (en CABA son 5 puntos de licencia): las preguntas quedan en espera hasta que frenes. Los datos se guardan solo en este teléfono; exportalos con “Exportar CSV”.</div>
+</div>
+
+<div id="rvPrompt" class="panel sheet" style="display:none">
+  <h2 id="rvQ">¿Cuántos lugares libres había?</h2>
+  <div class="sub" id="rvSub"></div>
+  <div class="grid">
+    <button data-v="0">0</button><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button>
+    <button data-v="4">4</button><button data-v="5">5</button><button data-v="6">6+</button><button data-v="np">No se puede</button>
+  </div>
+  <div class="grid2"><button data-v="skip">Omitir</button><button data-v="later">Después</button></div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// ================= Configuración =================
+const FALLBACK_CENTER = [-58.3955, -34.5908];   // Recoleta, si no hay ubicación
+const REPORT_TTL_MS = 15 * 60 * 1000;
+const COLORS = { ok: '#1f9d55', mid: '#e0a100', bad: '#d64545', none: '#9aa1ad' };
+const PARKABLE = ['primary', 'secondary', 'tertiary', 'minor'];   // clases de calle donde se estaciona (sin autopistas, servicios ni peatonales)
+const AVENUES = ['primary', 'secondary'];   // proxy de "avenida": regla 2023 → no se estaciona 7–21 hábiles; fin de semana sí
+const MAX_KNOWN = 40000;
+
+// ================= Mapa base minimalista =================
+// Los chunks son los "vector tiles": MapLibre baja solo los de la zona visible y descarga los lejanos.
+// Fondo, agua, parques, edificios muy tenues, calles en gris y nombres de calles. Sin locales, paradas ni autopistas resaltadas.
+const baseStyle = {
+  version: 8,
+  glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  sources: { omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' } },
+  layers: [
+    { id: 'bg', type: 'background', paint: { 'background-color': '#e9ecf0' } },
+    { id: 'park', type: 'fill', source: 'omt', 'source-layer': 'park', paint: { 'fill-color': '#dde7da' } },
+    { id: 'water', type: 'fill', source: 'omt', 'source-layer': 'water', paint: { 'fill-color': '#cddbea' } },
+    { id: 'building', type: 'fill', source: 'omt', 'source-layer': 'building', minzoom: 15, paint: { 'fill-color': '#dfe2e8', 'fill-opacity': 0.8 } },
+    { id: 'roads-fast', type: 'line', source: 'omt', 'source-layer': 'transportation',
+      filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk']]],
+      paint: { 'line-color': '#d0d4dc', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 18, 7] } },
+    { id: 'roads', type: 'line', source: 'omt', 'source-layer': 'transportation',
+      filter: ['in', ['get', 'class'], ['literal', PARKABLE]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': '#f7f8fa', 'line-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 18, 14] } },
+    { id: 'street-names', type: 'symbol', source: 'omt', 'source-layer': 'transportation_name', minzoom: 15.5,
+      filter: ['in', ['get', 'class'], ['literal', PARKABLE]],
+      layout: { 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-font': ['Noto Sans Regular'], 'text-size': 11 },
+      paint: { 'text-color': '#6b7383', 'text-halo-color': '#f7f8fa', 'text-halo-width': 1.5 } }
+  ]
+};
+
+const map = new maplibregl.Map({ container: 'map', style: baseStyle, center: FALLBACK_CENTER, zoom: 16, attributionControl: { compact: true } });
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+// ================= Estado =================
+const $ = id => document.getElementById(id);
+const known = new Map();   // id de tramo -> { cls }
+let reports = loadReports();
+let following = false;
+let meMarker = null;
+let locMsg = '';
+
+function loadReports() { try { return JSON.parse(localStorage.getItem('reports') || '{}'); } catch { return {}; } }
+function saveReports() { try { localStorage.setItem('reports', JSON.stringify(reports)); } catch {} }
+function minAgo(ts) { return Math.max(0, Math.round((Date.now() - ts) / 60000)); }
+function fmtHour(h) { return String(h).padStart(2, '0') + ':00'; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+// ================= Modelo SIMULADO (hipótesis, no datos reales) =================
+function baseOccupancy(hour, dayType) {
+  if (dayType === 'wd') {
+    if (hour < 6) return 0.40;
+    if (hour < 8) return 0.40 + (hour - 6) * 0.20;
+    if (hour < 19) return 0.88;
+    if (hour < 22) return 0.72;
+    return 0.50;
+  }
+  if (dayType === 'sat') { if (hour < 9) return 0.40; if (hour < 14) return 0.78; if (hour < 21) return 0.68; return 0.50; }
+  if (hour < 10) return 0.35; if (hour < 20) return 0.55; return 0.45;
+}
+function hash01(n) { const x = Math.sin((n % 1000003) * 12.9898) * 43758.5453; return x - Math.floor(x); }
+function currentSim() {
+  let day = $('day').value;
+  if (day === 'auto') { const d = new Date().getDay(); day = d === 0 ? 'sun' : d === 6 ? 'sat' : 'wd'; }
+  return { hour: +$('hour').value, dayType: day };
+}
+
+function evaluate(id, cls, sim) {
+  if (AVENUES.includes(cls)) {
+    const allowed = sim.dayType === 'wd' ? (sim.hour >= 21 || sim.hour < 7) : true;
+    if (!allowed) return { kind: 'none', color: COLORS.none, label: 'No se puede', note: 'Avenida: en horario hábil (7–21) no se estaciona (regla general)', p: 0 };
+  }
+  const occ = Math.min(0.98, Math.max(0.10, baseOccupancy(sim.hour, sim.dayType) + (hash01(id) - 0.5) * 0.5));
+  const p = 1 - occ;
+  const rep = reports[id];
+  if (rep && Date.now() - rep.ts < REPORT_TTL_MS) {
+    const note = `Aviso de usuario hace ${minAgo(rep.ts)} min`;
+    if (rep.type === 'hay')  return { kind: 'ok',  color: COLORS.ok,  label: 'Hay lugar (aviso reciente)', note, p };
+    if (rep.type === 'sale') return { kind: 'ok',  color: COLORS.ok,  label: 'Se está yendo un auto', note, p };
+    if (rep.type === 'no')   return { kind: 'bad', color: COLORS.bad, label: 'Sin lugar (aviso reciente)', note, p };
+  }
+  if (p >= 0.25) return { kind: 'ok',  color: COLORS.ok,  label: 'Probable que haya lugar', note: '', p };
+  if (p >= 0.10) return { kind: 'mid', color: COLORS.mid, label: 'Difícil', note: '', p };
+  return { kind: 'bad', color: COLORS.bad, label: 'Muy difícil', note: '', p };
+}
+
+// ================= Pintado de las calles (por tramo, con feature-state) =================
+let pending = false, forceAll = false;
+function scheduleColorize(force) {
+  if (force) forceAll = true;
+  if (pending) return;
+  pending = true;
+  setTimeout(() => { pending = false; colorize(); }, 60);
+}
+
+function colorize() {
+  if (!map.getLayer('calles-color')) return;
+  const sim = currentSim();
+  $('hourLabel').textContent = fmtHour(sim.hour);
+  if (known.size > MAX_KNOWN) { map.removeFeatureState({ source: 'omt', sourceLayer: 'transportation' }); known.clear(); forceAll = true; }
+
+  // tramos de todos los chunks (tiles) cargados, incluidos los que están apenas fuera de pantalla
+  const fs = map.querySourceFeatures('omt', { sourceLayer: 'transportation', filter: ['in', ['get', 'class'], ['literal', PARKABLE]] });
+  for (const f of fs) {
+    if (f.id === undefined) continue;
+    if (!forceAll && known.has(f.id)) continue;
+    known.set(f.id, { cls: f.properties.class });
+  }
+  if (forceAll) {
+    for (const [id, v] of known) map.setFeatureState({ source: 'omt', sourceLayer: 'transportation', id }, { color: evaluate(id, v.cls, sim).color });
+  } else {
+    for (const f of fs) {
+      if (f.id === undefined || colored.has(f.id)) continue;
+      map.setFeatureState({ source: 'omt', sourceLayer: 'transportation', id: f.id }, { color: evaluate(f.id, f.properties.class, sim).color });
+    }
+  }
+  if (forceAll) { colored.clear(); for (const id of known.keys()) colored.add(id); }
+  else for (const f of fs) if (f.id !== undefined) colored.add(f.id);
+  forceAll = false;
+  $('status').innerHTML = `<b>${known.size}</b> tramos de calle en memoria (se cargan y descargan según dónde mires)` + (locMsg ? `<br>${locMsg}` : '');
+}
+const colored = new Set();
+
+map.on('load', () => {
+  map.addLayer({
+    id: 'calles-color', type: 'line', source: 'omt', 'source-layer': 'transportation', minzoom: 13,
+    filter: ['all', ['in', ['get', 'class'], ['literal', PARKABLE]], ['!=', ['get', 'brunnel'], 'tunnel']],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['coalesce', ['feature-state', 'color'], 'rgba(0,0,0,0)'], 'line-opacity': 0.95,
+             'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 18, 9] }
+  }, 'street-names');
+  map.on('click', 'calles-color', onClickStreet);
+  map.on('mouseenter', 'calles-color', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'calles-color', () => map.getCanvas().style.cursor = '');
+  initReleveLayers();
+  scheduleColorize(true);
+  locate(true);
+});
+map.on('sourcedata', e => { if (e.sourceId === 'omt' && e.isSourceLoaded) scheduleColorize(); });
+map.on('moveend', () => scheduleColorize());
+map.on('idle', () => scheduleColorize());
+map.on('dragstart', () => { following = false; });
+
+// ================= Popup y avisos =================
+function streetNameNear(point, cls, id) {
+  const nf = map.querySourceFeatures('omt', { sourceLayer: 'transportation_name', filter: ['has', 'name'] });
+  const byId = nf.find(f => f.id === id);
+  if (byId) return byId.properties.name;
+  let best = null, bestD = 14;   // píxeles
+  for (const f of nf) {
+    if (f.properties.class !== cls) continue;
+    const lines = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+    for (const line of lines) for (let i = 0; i < line.length - 1; i++) {
+      const a = map.project(line[i]), b = map.project(line[i + 1]);
+      const d = distToSeg(point, a, b);
+      if (d < bestD) { bestD = d; best = f.properties.name; }
+    }
+  }
+  return best;
+}
+function distToSeg(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  let t = l2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+let popup = null;
+function onClickStreet(e) {
+  const f = e.features[0];
+  const id = f.id, cls = f.properties.class;
+  const ev = evaluate(id, cls, currentSim());
+  const name = streetNameNear(e.point, cls, id) || 'Calle sin nombre en el mapa';
+  const html = `<div class="pop">
+    <h3>${escapeHtml(name)}</h3>
+    <span class="tag" style="background:${ev.color}">${ev.label}</span>
+    ${ev.kind !== 'none' ? `<div class="meta">Chance estimada de lugar: ~${Math.round(ev.p * 100)}% (simulación)</div>` : ''}
+    ${ev.note ? `<div class="meta">${escapeHtml(ev.note)}</div>` : ''}
+    <div class="meta">Respetá siempre la señalización de la cuadra.</div>
+    <div class="btns">
+      <button onclick="sendReport(${id},'hay')">Hay lugar</button>
+      <button onclick="sendReport(${id},'sale')">Me voy</button>
+      <button onclick="sendReport(${id},'no')">No hay</button>
+    </div></div>`;
+  if (popup) popup.remove();
+  popup = new maplibregl.Popup({ maxWidth: '280px' }).setLngLat(e.lngLat).setHTML(html).addTo(map);
+}
+function sendReport(id, type) {
+  reports[id] = { type, ts: Date.now() };
+  for (const k of Object.keys(reports)) if (Date.now() - reports[k].ts > REPORT_TTL_MS) delete reports[k];
+  saveReports();
+  if (popup) popup.remove();
+  scheduleColorize(true);
+}
+
+// ================= Ubicación =================
+let watchId = null;
+function locate(first) {
+  if (!navigator.geolocation) { locMsg = 'Este navegador no tiene geolocalización. Mostrando Recoleta.'; scheduleColorize(); return; }
+  locMsg = 'Pidiendo permiso de ubicación…'; scheduleColorize();
+  navigator.geolocation.getCurrentPosition(pos => {
+    onFix(pos, true);
+    if (watchId === null) watchId = navigator.geolocation.watchPosition(p => onFix(p, false), null, { enableHighAccuracy: true, maximumAge: 5000 });
+  }, err => {
+    locMsg = first ? 'No se pudo usar tu ubicación. Mostrando Recoleta; podés mover el mapa o tocar "Mi ubicación".' : 'No se pudo obtener tu ubicación (' + err.message + ').';
+    scheduleColorize();
+  }, { enableHighAccuracy: true, timeout: 12000 });
+}
+function onFix(pos, jump) {
+  const ll = [pos.coords.longitude, pos.coords.latitude];
+  if (!meMarker) { const el = document.createElement('div'); el.className = 'me'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(ll).addTo(map); }
+  else meMarker.setLngLat(ll);
+  if (SV.active && !SV.sim) surveyFix(pos.coords);
+  locMsg = 'Ubicación activa: el mapa te sigue hasta que lo muevas.';
+  if (jump) { following = true; map.jumpTo({ center: ll, zoom: 16.5 }); }
+  else if (following) map.easeTo({ center: ll, duration: 800 });
+  scheduleColorize();
+}
+
+// ================= Relevamiento (pestaña) =================
+// Idea: caminando o de acompañante, el GPS detecta cuándo pasás por una esquina; al llegar a la siguiente,
+// la app pregunta cuántos lugares libres había en esa cuadra. Una "esquina" es un punto donde se cruzan dos calles.
+const SV = { active: false, graph: null, last: null, speed: 0, path: 0, lastI: null, queue: [], prompt: null, asked: new Map(), sim: null, simT: 0, wake: null, acc: null };
+let obs = loadObs();
+function loadObs() { try { return JSON.parse(localStorage.getItem('obs') || '[]'); } catch { return []; } }
+function saveObs() { try { localStorage.setItem('obs', JSON.stringify(obs)); } catch { alert('No se pudo guardar en el teléfono. Exportá el CSV y borrá datos viejos.'); } }
+
+const toRad = Math.PI / 180;
+function mdist(a, b) { const dx = (b[0] - a[0]) * Math.cos((a[1] + b[1]) / 2 * toRad) * 111320, dy = (b[1] - a[1]) * 110540; return Math.hypot(dx, dy); }
+function distToPolyline(p, coords) {
+  let best = Infinity; const k = Math.cos(p[1] * toRad) * 111320, ky = 110540;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const ax = (coords[i][0] - p[0]) * k, ay = (coords[i][1] - p[1]) * ky, bx = (coords[i + 1][0] - p[0]) * k, by = (coords[i + 1][1] - p[1]) * ky;
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 ? -(ax * dx + ay * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+function polyLen(c) { let s = 0; for (let i = 0; i < c.length - 1; i++) s += mdist(c[i], c[i + 1]); return s; }
+const vkey = c => Math.round(c[0] * 1e5) + ',' + Math.round(c[1] * 1e5);
+function linesOf(g) { return g.type === 'MultiLineString' ? g.coordinates : g.type === 'LineString' ? [g.coordinates] : []; }
+
+// Calles y esquinas alrededor de una posición (a partir de los chunks ya cargados)
+function buildGraph(center) {
+  const fs = map.querySourceFeatures('omt', { sourceLayer: 'transportation',
+    filter: ['all', ['in', ['get', 'class'], ['literal', PARKABLE]], ['!=', ['get', 'brunnel'], 'tunnel']] });
+  const D = 0.004;
+  const near = c => Math.abs(c[0] - center[0]) < D && Math.abs(c[1] - center[1]) < D;
+  const lines = [], ids = new Map();
+  for (const f of fs) {
+    if (f.id === undefined) continue;
+    for (const l of linesOf(f.geometry)) {
+      if (!l.some(near)) continue;
+      lines.push({ fid: f.id, c: l });
+      for (const v of l) { const k = vkey(v); let s = ids.get(k); if (!s) { s = new Set(); ids.set(k, s); } s.add(f.id); }
+    }
+  }
+  const inters = [];
+  for (const [k, s] of ids) {
+    if (s.size < 2) continue;
+    const [x, y] = k.split(',').map(Number);
+    const pt = [x / 1e5, y / 1e5];
+    if (near(pt)) inters.push({ key: k, pt, fids: s });
+  }
+  return { center, t: Date.now(), lines, inters };
+}
+function ensureGraph(p) {
+  if (!SV.graph || mdist(SV.graph.center, p) > 150 || Date.now() - SV.graph.t > 15000) SV.graph = buildGraph(p);
+  return SV.graph;
+}
+
+function nameAt(pt, maxM, preferFid) {
+  const nf = map.querySourceFeatures('omt', { sourceLayer: 'transportation_name', filter: ['has', 'name'] });
+  let best = null, bd = maxM;
+  for (const f of nf) for (const l of linesOf(f.geometry)) {
+    const d = distToPolyline(pt, l) - (f.id === preferFid ? 3 : 0);
+    if (d < bd) { bd = d; best = f.properties.name; }
+  }
+  return best;
+}
+function crossName(I, fid) {   // calle que cruza en la esquina I (distinta de la que recorremos)
+  for (const other of I.fids) {
+    if (other === fid) continue;
+    for (const L of SV.graph.lines) {
+      if (L.fid !== other || !L.c.some(v => vkey(v) === I.key)) continue;
+      let q = L.c.find(v => { const d = mdist(v, I.pt); return d >= 15 && d <= 80; }) || L.c[0];
+      const n = nameAt(q, 8, other);
+      if (n) return n;
+    }
+  }
+  return null;
+}
+
+// ---- Detección de esquinas con el GPS ----
+function surveyFix(c) {
+  const p = [c.longitude, c.latitude], now = c.ts || Date.now();
+  if (c.accuracy && c.accuracy > 45) { SV.acc = 'Señal GPS débil (' + Math.round(c.accuracy) + ' m): esperá a tener mejor señal'; renderInfo(); return; }
+  SV.acc = null;
+  if (SV.last) {
+    const d = mdist(SV.last.p, p), dt = (now - SV.last.t) / 1000;
+    if (dt > 0) { const v = (c.speed != null && !isNaN(c.speed)) ? c.speed : d / dt; SV.speed = 0.6 * SV.speed + 0.4 * v; }
+    if (d > 2) SV.path += d;
+  }
+  SV.last = { p, t: now };
+  const g = ensureGraph(p);
+  let best = null, bd = 18;
+  for (const I of g.inters) { const d = mdist(I.pt, p); if (d < bd) { bd = d; best = I; } }
+  if (best && (!SV.lastI || SV.lastI.key !== best.key)) {
+    if (SV.lastI) tryClose(SV.lastI, best);
+    SV.lastI = best; SV.path = 0;
+  }
+  pumpPrompts();
+  renderInfo();
+}
+function tryClose(A, B) {
+  const common = [...A.fids].filter(f => B.fids.has(f));
+  const straight = mdist(A.pt, B.pt);
+  if (!common.length || straight < 30 || straight > 350) return;
+  if (SV.path > straight * 1.7 + 50) return;   // no fue por la misma calle
+  enqueue(A, B, common[0]);
+}
+function enqueue(A, B, fid, manual) {
+  const key = [A.key, B.key].sort().join('|');
+  const prev = SV.asked.get(key);
+  if (!manual && prev && Date.now() - prev < 30 * 60 * 1000) return;   // ya la preguntamos hace poco
+  SV.asked.set(key, Date.now());
+  const mid = [(A.pt[0] + B.pt[0]) / 2, (A.pt[1] + B.pt[1]) / 2];
+  let street = null, from = null, to = null;
+  try { street = nameAt(mid, 15, fid); if (!manual) { from = crossName(A, fid); to = crossName(B, fid); } } catch {}
+  SV.queue.push({ key, A, B, fid, street: street || 'Calle sin nombre', from, to, len: mdist(A.pt, B.pt), manual: !!manual, acc: SV.last ? 0 : 0 });
+  pumpPrompts();
+}
+
+// ---- Preguntas ----
+function isMoving() { return !$('rvCompanion').checked && SV.speed > 4; }   // > ~14 km/h
+function pumpPrompts() {
+  if (SV.prompt) return;
+  if (!SV.queue.length) return;
+  if (isMoving()) return;   // quedan en espera hasta que frenes
+  SV.prompt = SV.queue.shift();
+  const P = SV.prompt;
+  $('rvQ').textContent = '¿Cuántos lugares libres había?';
+  $('rvSub').textContent = P.street + (P.from && P.to ? ` · entre ${P.from} y ${P.to}` : P.from || P.to ? ` · desde ${P.from || P.to}` : '') + (P.len ? ` (~${Math.round(P.len)} m)` : '');
+  $('rvPrompt').style.display = '';
+  $('relev').style.display = 'none';
+  renderInfo();
+}
+function answer(v) {
+  const P = SV.prompt;
+  if (!P) return;
+  SV.prompt = null;
+  $('rvPrompt').style.display = 'none';
+  $('relev').style.display = mode === 'rel' ? '' : 'none';
+  if (v === 'later') { SV.queue.push(P); }
+  else if (v !== 'skip') {
+    const d = new Date();
+    obs.push({ ts: d.toISOString(), dia: ['dom', 'lun', 'mar', 'mie', 'jue', 'vie', 'sab'][d.getDay()], hora: d.getHours(),
+      calle: P.street, entre_a: P.from || '', entre_b: P.to || '',
+      lugares_libres: v === 'np' ? '' : (v === '6' ? 6 : +v), mas_de_6: v === '6' ? 1 : 0, estado: v === 'np' ? 'no_se_puede_estacionar' : 'ok',
+      desde_lng: P.A.pt[0], desde_lat: P.A.pt[1], hasta_lng: P.B.pt[0], hasta_lat: P.B.pt[1], largo_m: Math.round(P.len), manual: P.manual ? 1 : 0, modo: $('rvCompanion').checked ? 'pie_o_acompanante' : 'auto' });
+    saveObs();
+  }
+  renderReleve(); renderInfo();
+  setTimeout(pumpPrompts, 150);
+}
+document.querySelectorAll('#rvPrompt button').forEach(b => b.addEventListener('click', () => answer(b.dataset.v)));
+
+function todayCount() { const t = new Date().toISOString().slice(0, 10); return obs.filter(o => o.ts.slice(0, 10) === t).length; }
+function renderInfo() {
+  $('rvCount').textContent = `${obs.length} cuadras guardadas (${todayCount()} hoy)`;
+  let t;
+  if (!SV.active) t = 'Tocá “Empezar”. Al llegar al final de cada cuadra te pregunto cuántos lugares libres había.';
+  else if (SV.acc) t = SV.acc;
+  else {
+    t = SV.lastI ? 'Recorriendo… te pregunto en la próxima esquina.' : 'Caminá hasta la primera esquina para empezar a contar cuadras.';
+    if (SV.queue.length) t += ` ${SV.queue.length} cuadra(s) en espera${isMoving() ? ': respondé cuando frenes' : ''}.`;
+  }
+  $('rvInfo').textContent = t;
+}
+function renderReleve() {
+  renderInfo();
+  const src = map.getSource && map.getSource('releve');
+  if (!src) return;
+  src.setData({ type: 'FeatureCollection', features: obs.map(o => ({ type: 'Feature',
+    properties: { color: o.estado !== 'ok' ? COLORS.none : o.lugares_libres === 0 ? COLORS.bad : o.lugares_libres <= 2 ? COLORS.mid : COLORS.ok },
+    geometry: { type: 'LineString', coordinates: [[o.desde_lng, o.desde_lat], [o.hasta_lng, o.hasta_lat]] } })) });
+}
+function initReleveLayers() {
+  map.addSource('releve', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'releve-lines', type: 'line', source: 'releve', layout: { 'line-cap': 'round', visibility: 'none' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 14, 3, 18, 9], 'line-opacity': 0.95 } }, 'street-names');
+  renderReleve();
+}
+
+// ---- Pestañas, inicio/fin ----
+let mode = 'mapa';
+function setMode(m) {
+  mode = m;
+  $('tab-mapa').classList.toggle('on', m === 'mapa'); $('tab-rel').classList.toggle('on', m === 'rel');
+  $('controls').style.display = $('legend').style.display = m === 'mapa' ? '' : 'none';
+  $('relev').style.display = (m === 'rel' && !SV.prompt) ? '' : 'none';
+  if (map.getLayer('calles-color')) map.setLayoutProperty('calles-color', 'visibility', m === 'mapa' ? 'visible' : 'none');
+  if (map.getLayer('releve-lines')) map.setLayoutProperty('releve-lines', 'visibility', m === 'rel' ? 'visible' : 'none');
+  renderInfo();
+}
+async function startSurvey() {
+  SV.active = true; SV.lastI = null; SV.path = 0; SV.speed = 0; SV.last = null; SV.queue = [];
+  $('rvStart').textContent = 'Detener';
+  try { SV.wake = await navigator.wakeLock.request('screen'); } catch {}   // pantalla encendida
+  following = true;
+  if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(false);
+  renderInfo();
+}
+function stopSurvey() {
+  SV.active = false; $('rvStart').textContent = 'Empezar';
+  stopSim();
+  try { SV.wake && SV.wake.release(); } catch {} SV.wake = null;
+  renderInfo();
+}
+function densify(c, step) {
+  const out = [];
+  for (let i = 0; i < c.length - 1; i++) {
+    const n = Math.max(1, Math.round(mdist(c[i], c[i + 1]) / step));
+    for (let j = 0; j < n; j++) out.push([c[i][0] + (c[i + 1][0] - c[i][0]) * j / n, c[i][1] + (c[i + 1][1] - c[i][1]) * j / n]);
+  }
+  out.push(c[c.length - 1]);
+  return out;
+}
+function stopSim() { if (SV.sim) { clearInterval(SV.sim); SV.sim = null; } }
+function startSim() {   // recorrido falso por la calle más larga cercana, para probar sin salir a la calle
+  stopSim();
+  const c = map.getCenter(), cp = [c.lng, c.lat];
+  const g = buildGraph(cp);
+  const L = g.lines.filter(l => distToPolyline(cp, l.c) < 200).sort((a, b) => polyLen(b.c) - polyLen(a.c))[0];
+  if (!L) { alert('No hay calles cargadas cerca del centro del mapa. Esperá un momento y probá de nuevo.'); return; }
+  $('rvCompanion').checked = true;
+  if (!SV.active) startSurvey();
+  SV.graph = null; SV.lastI = null; SV.last = null;
+  const pts = densify(L.c, 6); let i = 0; SV.simT = Date.now();
+  if (!meMarker) { const el = document.createElement('div'); el.className = 'me'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(pts[0]).addTo(map); }
+  SV.sim = setInterval(() => {
+    if (SV.prompt || SV.queue.length) return;   // espera a que contestes
+    if (i >= pts.length) { stopSim(); SV.acc = null; $('rvInfo').textContent = 'Fin del recorrido simulado.'; return; }
+    const p = pts[i++]; SV.simT += 4300;
+    meMarker.setLngLat(p); map.jumpTo({ center: p, zoom: 17 });
+    surveyFix({ longitude: p[0], latitude: p[1], accuracy: 5, speed: 1.4, ts: SV.simT });
+  }, 90);
+}
+function toCsv() {
+  const cols = ['ts', 'dia', 'hora', 'calle', 'entre_a', 'entre_b', 'lugares_libres', 'mas_de_6', 'estado', 'desde_lat', 'desde_lng', 'hasta_lat', 'hasta_lng', 'largo_m', 'manual', 'modo'];
+  const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return '﻿' + [cols.join(','), ...obs.map(o => cols.map(c => esc(o[c])).join(','))].join('\r\n');
+}
+$('tab-mapa').addEventListener('click', () => setMode('mapa'));
+$('tab-rel').addEventListener('click', () => setMode('rel'));
+$('rvStart').addEventListener('click', () => SV.active ? stopSurvey() : startSurvey());
+$('rvSim').addEventListener('click', startSim);
+$('rvManual').addEventListener('click', () => {
+  const p = SV.last ? SV.last.p : (meMarker ? meMarker.getLngLat().toArray() : map.getCenter().toArray());
+  const A = SV.lastI || { key: 'm0', pt: p, fids: new Set() };
+  const B = { key: 'm' + Date.now(), pt: p, fids: new Set() };
+  enqueue(A, B, undefined, true);
+});
+$('rvUndo').addEventListener('click', () => { if (obs.length && confirm('¿Borrar la última cuadra cargada?')) { obs.pop(); saveObs(); renderReleve(); } });
+$('rvClear').addEventListener('click', () => { if (obs.length && confirm('¿Borrar TODOS los datos de este teléfono? Exportá el CSV antes.')) { obs = []; saveObs(); renderReleve(); } });
+$('rvCsv').addEventListener('click', () => {
+  if (!obs.length) { alert('Todavía no hay datos.'); return; }
+  const blob = new Blob([toCsv()], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'relevamiento-estacionamiento-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+});
+$('rvCompanion').addEventListener('change', pumpPrompts);
+setInterval(() => { if (SV.active) pumpPrompts(); }, 2000);
+renderInfo();
+
+// ================= Controles =================
+function setNow() { $('day').value = 'auto'; $('hour').value = new Date().getHours(); scheduleColorize(true); }
+$('hour').addEventListener('input', () => scheduleColorize(true));
+$('day').addEventListener('change', () => scheduleColorize(true));
+$('now').addEventListener('click', setNow);
+$('locate').addEventListener('click', () => { following = true; if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 16.5 }); else locate(false); });
+setNow();
+setInterval(() => scheduleColorize(true), 60 * 1000); // vencen los avisos
+</script>
+</body>
+</html>
