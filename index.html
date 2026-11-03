@@ -32,6 +32,12 @@
   #fab { top: calc(60px + var(--safe-t)); right: 12px; width: 48px; height: 48px; border-radius: 50%; padding: 0; display: grid; place-items: center; }
   #fab svg { width: 24px; height: 24px; stroke: var(--accent); fill: none; stroke-width: 2; }
 
+  #fab.need { background: var(--accent); }
+  #fab.need svg { stroke: #fff; }
+  #geoHelp { top: calc(116px + var(--safe-t)); left: 12px; right: 12px; max-width: 420px; padding: 12px 14px; z-index: 9; font-size: 14px; line-height: 1.4; }
+  .geoBtns { display: flex; gap: 8px; margin-top: 10px; }
+  .geoBtns button { flex: 1; min-height: 44px; }
+
   /* barra inferior */
   .dock { left: 12px; right: 12px; bottom: calc(12px + var(--safe-b)); max-width: 520px; padding: 12px; max-height: calc(100dvh - 130px - var(--safe-t) - var(--safe-b)); overflow-y: auto; }
   #timebar { display: flex; align-items: center; gap: 10px; }
@@ -85,6 +91,10 @@
 <div id="tabs" class="glass"><button id="tab-mapa" class="on">Mapa</button><button id="tab-rel">Relevamiento</button></div>
 <button id="fab" class="glass" aria-label="Mi ubicación"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></button>
 <div id="toast" hidden></div>
+<div id="geoHelp" class="glass" hidden>
+  <div id="geoMsg"></div>
+  <div class="geoBtns"><button id="geoRetry" class="primary">Reintentar</button><button id="geoClose">Cerrar</button></div>
+</div>
 
 <div id="timebar" class="glass dock">
   <select id="day" aria-label="Día">
@@ -262,7 +272,10 @@ map.on('load', () => {
   initReleveLayers();
   setMode(mode);
   scheduleColorize(true);
-  locate(true);
+  // se pide la ubicación al abrir; si no se pudo, el botón queda resaltado para tocarlo
+  $('fab').classList.add('need');
+  locate(false);
+  try { navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'denied') showGeoHelp('denied'); }); } catch {}
 });
 map.on('sourcedata', e => { if (e.sourceId === 'omt' && e.isSourceLoaded) scheduleColorize(); });
 map.on('moveend', () => scheduleColorize());
@@ -312,17 +325,36 @@ function sendReport(id, type) {
 }
 
 // ================= Ubicación =================
-let watchId = null;
-function locate(first) {
-  if (!navigator.geolocation) { if (!first) toast('Este navegador no tiene ubicación'); return; }
-  navigator.geolocation.getCurrentPosition(pos => {
-    onFix(pos, true);
-    if (watchId === null) watchId = navigator.geolocation.watchPosition(p => onFix(p, false), null, { enableHighAccuracy: true, maximumAge: 5000 });
-  }, err => {
-    toast(err.code === 1 ? 'Activá el permiso de ubicación para verte en el mapa' : 'No se pudo obtener tu ubicación');
-  }, { enableHighAccuracy: true, timeout: 12000 });
+let watchId = null, locating = false;
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+function showGeoHelp(kind) {
+  const steps = IS_IOS
+    ? 'En Safari tocá “aA” → Configuración del sitio web → Ubicación → Permitir. Si no aparece, en Ajustes del iPhone → Privacidad y seguridad → Localización, activala.'
+    : 'En Chrome tocá el candado junto a la dirección → Permisos → Ubicación → Permitir. Y revisá que la ubicación (GPS) del teléfono esté activada.';
+  $('geoMsg').textContent = kind === 'denied' ? 'La ubicación está bloqueada. ' + steps : kind === 'unsupported' ? 'Este navegador no permite usar la ubicación.' : 'No pude ubicarte. Revisá que el GPS esté activado y probá de nuevo, de preferencia al aire libre.';
+  $('geoHelp').hidden = false;
+}
+function hideGeoHelp() { $('geoHelp').hidden = true; }
+function startWatch() {
+  if (watchId !== null) return;
+  watchId = navigator.geolocation.watchPosition(p => onFix(p, false), () => {}, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+}
+// userTap = true cuando lo pide la persona con un toque (si falla, se lo explicamos)
+function locate(userTap) {
+  if (!navigator.geolocation) { if (userTap) showGeoHelp('unsupported'); return; }
+  if (locating) return;
+  locating = true;
+  const done = () => { locating = false; };
+  const ok = pos => { done(); hideGeoHelp(); onFix(pos, true); startWatch(); };
+  const giveUp = err => { done(); if (err.code === 1) showGeoHelp('denied'); else if (userTap) showGeoHelp('fail'); };
+  // primero con GPS preciso; si tarda o falla, con ubicación aproximada (wifi/antenas)
+  navigator.geolocation.getCurrentPosition(ok, err => {
+    if (err.code === 1) return giveUp(err);
+    navigator.geolocation.getCurrentPosition(ok, giveUp, { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 });
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 });
 }
 function onFix(pos, jump) {
+  $('fab').classList.remove('need');
   const ll = [pos.coords.longitude, pos.coords.latitude];
   if (!meMarker) { const el = document.createElement('div'); el.className = 'me'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(ll).addTo(map); }
   else meMarker.setLngLat(ll);
@@ -516,7 +548,7 @@ async function startSurvey() {
   SV.active = true; SV.lastI = null; SV.path = 0; SV.speed = 0; SV.last = null; SV.queue = [];
   try { SV.wake = await navigator.wakeLock.request('screen'); } catch {}
   following = true;
-  if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(false);
+  if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(true);
   renderInfo();
 }
 function stopSurvey() {
@@ -563,7 +595,9 @@ function toCsv() {
 // ================= Botones =================
 $('tab-mapa').addEventListener('click', () => setMode('mapa'));
 $('tab-rel').addEventListener('click', () => setMode('rel'));
-$('fab').addEventListener('click', () => { following = true; if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(false); });
+$('fab').addEventListener('click', () => { following = true; if (meMarker) map.easeTo({ center: meMarker.getLngLat(), zoom: 17 }); else locate(true); });
+$('geoRetry').addEventListener('click', () => { hideGeoHelp(); locate(true); });
+$('geoClose').addEventListener('click', hideGeoHelp);
 $('rvStart').addEventListener('click', () => SV.active ? stopSurvey() : startSurvey());
 $('rvMore').addEventListener('click', () => { $('rvMenu').hidden = !$('rvMenu').hidden; });
 $('rvSim').addEventListener('click', startSim);
